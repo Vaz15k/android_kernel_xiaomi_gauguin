@@ -1,0 +1,94 @@
+name: Build release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_kernel:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ksu, ksu-next, clean]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up build environment
+        run: |
+          sudo apt update && sudo apt upgrade
+          sudo apt-get remove --purge -y "php*" "dotnet*" "mysql*" "clang*" "google*"
+          sudo apt autoremove -y
+          sudo apt install -yq tar \
+            attr libelf-dev dwarves rsync libbrotli-dev \
+            libgtest-dev libprotobuf-dev libunwind-dev libusb-1.0-0-dev libzstd-dev libc6-dev \
+            linux-modules-extra-$(uname -r) build-essential p7zip-full libarchive-tools
+          
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch ToolChain
+        run: |
+          mkdir -p ~/Prebuilts
+          mkdir -p ~/Prebuilts/gl-clang/clang-r547379
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz -O clang.tar.gz
+          tar -xf clang.tar.gz -C ~/Prebuilts/gl-clang/clang-r547379
+          rm clang.tar.gz
+          
+          mkdir -p ~/Prebuilts/gas/linux-x86
+          wget -q https://android.googlesource.com/platform/prebuilts/gas/linux-x86/+archive/refs/heads/main.tar.gz -O gas.tar.gz
+          tar -xf gas.tar.gz -C ~/Prebuilts/gas/linux-x86
+          rm gas.tar.gz
+          
+          mkdir -p ~/Prebuilts/build-tools
+          wget -q https://android.googlesource.com/platform/prebuilts/build-tools/+archive/refs/heads/main/linux-x86.tar.gz -O build-tools.tar.gz
+          mkdir -p ~/Prebuilts/build-tools/linux-x86
+          tar -xf build-tools.tar.gz -C ~/Prebuilts/build-tools/linux-x86
+          rm build-tools.tar.gz
+
+      - name: Fetch AnyKernel3
+        run: |
+          git clone --branch gauguin https://github.com/Vaz15k/AnyKernel3.git ~/AnyKernel3
+          mkdir -p ~/files
+
+      - name: Set date variable
+        id: date
+        run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV      
+
+      - name: Build Kernel Clean
+        if: matrix.target == 'clean'
+        run: |
+          ./build_kernel.sh --clean
+          cp ~/AnyKernel3/gauguin* ~/files
+
+      - name: Build Kernel With KSU
+        if: matrix.target == 'ksu'
+        run: |
+          ./build_kernel.sh --ksu --clean
+          cp ~/AnyKernel3/gauguin* ~/files
+
+      - name: Build Kernel With KSU-NEXT
+        if: matrix.target == 'ksu-next'
+        run: |
+          ./build_kernel.sh --next --clean
+          cp ~/AnyKernel3/gauguin* ~/files
+
+      - name: Publish to GitHub
+        id: release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: /home/runner/files/*
+          name: Gauguin Kernel - ${{ env.DATE }}
+          tag_name: "${{ env.DATE }}"
+          body: |
+            - **Kernel Version:** 4.19
+            - **Clang Version:** Clang-r547379 
+            :rocket: *Built with love by GitHub Actions.*
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
