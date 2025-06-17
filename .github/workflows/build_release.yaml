@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [ksu, ksu-next, clean]
+        target: [ksu, next, clean, sukisu]
 
     steps:
       - name: Checkout repo
@@ -24,7 +24,7 @@ jobs:
           sudo apt install -yq tar \
             attr libelf-dev dwarves rsync libbrotli-dev \
             libgtest-dev libprotobuf-dev libunwind-dev libusb-1.0-0-dev libzstd-dev libc6-dev \
-            linux-modules-extra-$(uname -r) build-essential p7zip-full libarchive-tools
+            linux-modules-extra-$(uname -r) build-essential p7zip-full libarchive-tools cpio
           
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
@@ -36,21 +36,10 @@ jobs:
       - name: Fetch ToolChain
         run: |
           mkdir -p ~/Prebuilts
-          mkdir -p ~/Prebuilts/gl-clang/clang-r547379
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz -O clang.tar.gz
-          tar -xf clang.tar.gz -C ~/Prebuilts/gl-clang/clang-r547379
+          mkdir -p ~/Prebuilts/clang-r547379
+          wget -c https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/llvm-r547379-release/clang-r547379.tar.gz -O clang.tar.gz
+          tar -xf clang.tar.gz -C ~/Prebuilts/clang-r547379
           rm clang.tar.gz
-          
-          mkdir -p ~/Prebuilts/gas/linux-x86
-          wget -q https://android.googlesource.com/platform/prebuilts/gas/linux-x86/+archive/refs/heads/main.tar.gz -O gas.tar.gz
-          tar -xf gas.tar.gz -C ~/Prebuilts/gas/linux-x86
-          rm gas.tar.gz
-          
-          mkdir -p ~/Prebuilts/build-tools
-          wget -q https://android.googlesource.com/platform/prebuilts/build-tools/+archive/refs/heads/main/linux-x86.tar.gz -O build-tools.tar.gz
-          mkdir -p ~/Prebuilts/build-tools/linux-x86
-          tar -xf build-tools.tar.gz -C ~/Prebuilts/build-tools/linux-x86
-          rm build-tools.tar.gz
 
       - name: Fetch AnyKernel3
         run: |
@@ -74,9 +63,15 @@ jobs:
           cp ~/AnyKernel3/gauguin* ~/files
 
       - name: Build Kernel With KSU-NEXT
-        if: matrix.target == 'ksu-next'
+        if: matrix.target == 'next'
         run: |
           ./build_kernel.sh --next --clean
+          cp ~/AnyKernel3/gauguin* ~/files
+
+      - name: Build Kernel With SukiSU
+        if: matrix.target == 'sukisu'
+        run: |
+          ./build_kernel.sh --sukisu --clean
           cp ~/AnyKernel3/gauguin* ~/files
 
       - name: Publish to GitHub
@@ -87,6 +82,18 @@ jobs:
           name: Gauguin Kernel - ${{ env.DATE }}
           tag_name: "${{ env.DATE }}"
           body: |
+            ## Managers
+            - **KernelSU-SusFS:** https://github.com/rsuntk/KernelSU/releases
+            - **KernelSU-Next:** https://github.com/KernelSU-Next/KernelSU-Next/releases
+            - **SukiSU:** https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases
+            
+            ### Info
+            
+            SukiSU have support for KPM and SusFS. <br>
+            KernelSU have support for SusFS. <br>
+            KernelSU-Next susfs is disabled for now... <br>
+            
+            ---
             - **Kernel Version:** 4.19
             - **Clang Version:** Clang-r547379 
             :rocket: *Built with love by GitHub Actions.*

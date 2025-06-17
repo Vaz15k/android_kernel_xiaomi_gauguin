@@ -15,13 +15,9 @@ toolchain() {
     else
         TC_DIR="$HOME/Projetos/Prebuilts"
     fi
-	BT_DIR="$TC_DIR/build-tools"
-	CL_DIR="$TC_DIR/gl-clang/clang-r547379"
-	GAS_DIR="$TC_DIR/gas"
 
+	CL_DIR="$TC_DIR/clang-r547379"
 	export PATH=$CL_DIR/bin:$PATH
-	export PATH=$BT_DIR/path/linux-x86:$PATH
-	export PATH=$GAS_DIR/linux-x86:$PATH
 }
 
 clear_build() {
@@ -32,36 +28,57 @@ clear_build() {
 
 ksu() {
     if [[ "$ARGS" == *"--ksu"* ]]; then
-        echo "KernelSU without SUSFS"
-        if [ ! -d "KernelSU" ]; then
-            echo "KernelSU not found !"
-            echo "Fetching ...."
-            curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -
+        if [ ! -d "$DIR/KernelSU" ]; then
+            echo "INFO: Cloning KernelSU with SUSFS"
+            curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s susfs-main
         fi
         ZIP_NAME="gauguin_ksu_$(date +'%Y-%m-%d')"
+        
         scripts/config --file $DIR/arch/arm64/configs/$DEFCONFIG \
             -e CONFIG_KSU \
+            -e CONFIG_KSU_SUSFS \
             --set-str CONFIG_LOCALVERSION "-ksu"
-        echo "Building Kernel with KernelSU"
+            
+        echo "INFO: Building KSU kernel"
+
     elif [[ "$ARGS" == *"--next"* ]]; then
-        echo "KernelSU-Next without SUSFS"
-        if [ ! -d "KernelSU" ]; then
-            echo "KernelSU Next not found !"
-            echo "Fetching ...."
-            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -
+        if [ ! -d "$DIR/KernelSU-Next" ]; then
+            echo "INFO: Cloning KernelSU Next"
+            # curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
         fi
         ZIP_NAME="gauguin_ksu_next_$(date +'%Y-%m-%d')"
+        
         scripts/config --file $DIR/arch/arm64/configs/$DEFCONFIG \
             -e CONFIG_KSU \
             --set-str CONFIG_LOCALVERSION "-ksu_next"
-        echo "Building Kernel with KernelSU-Next"
+        
+        echo "INFO: Building KSU Next"
+
+    elif [[ "$ARGS" == *"--sukisu"* ]]; then
+        if [ ! -d "$DIR/KernelSU" ]; then
+            echo "INFO: Cloning SukiSU"
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+        fi
+        ZIP_NAME="gauguin_sukisu_$(date +'%Y-%m-%d')"
+        
+        scripts/config --file $DIR/arch/arm64/configs/$DEFCONFIG \
+            -e CONFIG_KSU \
+            -e CONFIG_KSU_SUSFS \
+            -e CONFIG_KPM \
+            -e KSU_MANUAL_HOOK \
+            -e CONFIG_KALLSYMS \
+            -e CONFIG_KALLSYMS_ALL \
+            --set-str CONFIG_LOCALVERSION "-sukisu"
+        
+        echo "INFO: Building SukiSU kernel"
+
     else
-        echo "KSU disabled"
-        ZIP_NAME="gauguin_$(date +'%Y-%m-%d')"
-        if [ -d "KernelSU" ]; then
-            rm -rf drivers/kernelsu KernelSU
+        if [ -d "$DIR/KernelSU" ] || [ -d "$DIR/KernelSU-Next" ]; then
+            rm -rf "$DIR/KernelSU" "$DIR/KernelSU-Next" "$DIR/drivers/kernelsu"
             git reset HEAD --hard
         fi
+        ZIP_NAME="gauguin_$(date +'%Y-%m-%d')"
     fi
 }
 
@@ -77,10 +94,26 @@ anykernel3() {
 	fi
 }
 
+patch_kpm() {
+    wget -q -O kpm_patch_linux $(curl -s https://api.github.com/repos/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/latest | grep "browser_download_url.*patch_linux" | cut -d : -f 2,3 | tr -d \")
+    if [ -f "kpm_patch_linux" ]; then
+        echo "INFO: Applying KPM patch"
+        chmod +x kpm_patch_linux
+        ./kpm_patch_linux Image
+        rm Image kpm_patch_linux
+        mv oImage Image
+    else
+        echo "ERROR: KPM patch not found"
+    fi
+}
+
 makezipfile() {
     cp $OUT_KERNEL $AK3_DIR
     cp $OUT_DTBO $AK3_DIR
     cd $AK3_DIR
+    if [[ "$ARGS" == *"--sukisu"* ]]; then
+        patch_kpm
+    fi
     zip -r9 $ZIP_NAME . -x '*.git*' '*patch*' '*ramdisk*' 'README.md' '*modules*'
 }
 
